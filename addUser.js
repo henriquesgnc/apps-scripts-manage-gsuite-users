@@ -4,11 +4,11 @@ function addUser(){
   var sheet = ss.getSheets()[0];
   var lastRow = ss.getLastRow();
   var choice = ss.getRange('B'+lastRow).getValue();
-  var email =  ss.getRange('E'+lastRow).getValue();
-  var firstname = ss.getRange('F'+lastRow).getValue();
-  var lastname = ss.getRange('G'+lastRow).getValue();
-  var personalMail = ss.getRange('N'+lastRow).getValue();
-  var departament = ss.getRange('I'+lastRow).getValue();
+  var email =  ss.getRange('D'+lastRow).getValue();
+  var firstname = ss.getRange('E'+lastRow).getValue();
+  var lastname = ss.getRange('F'+lastRow).getValue();
+  var personalMail = ss.getRange('J'+lastRow).getValue();
+  var departament = ss.getRange('G'+lastRow).getValue();
   var date = Utilities.formatDate(sheet.getRange("C"+lastRow).getValue(), "UTC", "dd/MM/yyyy" );ss.getRange('Q'+lastRow).getValue();
   var feedbackDate = sheet.getRange("C"+lastRow).getValue();
 
