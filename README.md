@@ -2,7 +2,7 @@
 
 The purpose of this project is to make the way users manage on Google can be done in a simple way through a Google form.
 
-# Features
+- Features
     - Creates accounts on G Suite.
     - Suspends accounts in G Suite.
     - Inserts the new user/employee in serveral Google groups.
