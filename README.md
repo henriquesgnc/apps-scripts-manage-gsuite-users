@@ -15,10 +15,10 @@ Visit the [Google Scripts - Admin SDK](https://developers.google.com/admin-sdk/d
 
 ### Using the Manage Scripts
  
- - Create a simple [Google Forms] (https://docs.google.com/forms) with the basic informations of the user.
+ - Create a simple [Google Forms](https://docs.google.com/forms) with the basic informations of the user.
  - Open the spreadsheet responses.
  - Go to Tools > Script Editor.
- - Paste the addUser.js in the [Google Scripts] (https://script.google.com). Create another file and paste the suspendUser.js.
+ - Paste the addUser.js in the [Google Scripts](https://script.google.com). Create another file and paste the suspendUser.js.
  - Go to Edit > All your triggers and insert the addUser function and suspendUser function to run on form submit.
 
 
