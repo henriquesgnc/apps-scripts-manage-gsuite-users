@@ -10,7 +10,7 @@ Thanks for your interest in contributing to this project. Here's how to get star
 
 ## Making Changes
 
-1. Create a branch from `main`
+1. Create a branch from the default branch
 2. Make your changes
 3. Test the scripts in Google Apps Script with a test spreadsheet
 4. Update documentation if your change affects user-facing behavior

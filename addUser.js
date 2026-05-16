@@ -1,145 +1,131 @@
 /**
- * Triggered on Google Form submit when "Create login" is selected.
+ * Onboarding handler. Called by onFormSubmit when Choice === 'Create login'.
  *
- * 1. Creates a G Suite user account via Admin SDK Directory API
- * 2. Adds the user to configured Google Groups
- * 3. Sends a welcome email to the employee's personal address
- * 4. Creates a calendar event on the employee's start date (optional)
+ * Steps (each wrapped in try/catch):
+ * 1. Insert user via Admin SDK Directory API
+ * 2. Add user to Google Groups (if groups provided)
+ * 3. Send welcome email to personal address (if email provided)
+ * 4. Create calendar event for manager (if manager + date provided)
+ *
+ * @param {Object} values  — e.namedValues from the form submission
+ * @param {Sheet}  sheet   — the responses sheet
+ * @param {number} row     — the submitted row number
+ * @param {Object} config  — configuration from getConfig()
  */
 
-function addUser() {
-  var ss = SpreadsheetApp.openById('spreadsheetId');
-  var sheet = ss.getSheets()[0];
-  var lastRow = ss.getLastRow();
+function addUser(values, sheet, row, config) {
+  var email = getFormValue(values, 'Company Email');
+  var firstName = getFormValue(values, 'First Name');
+  var lastName = getFormValue(values, 'Last Name');
+  var department = getFormValue(values, 'Department');
+  var managerEmail = getFormValue(values, 'Manager Email');
+  var groups = getFormValue(values, 'Groups');
+  var personalEmail = getFormValue(values, 'Personal Email');
+  var startDateStr = getFormValue(values, 'Start Date');
 
-  var choice = sheet.getRange('B' + lastRow).getValue();
-  var date = sheet.getRange('C' + lastRow).getValue();
-  var email = sheet.getRange('D' + lastRow).getValue();
-  var firstName = sheet.getRange('E' + lastRow).getValue();
-  var lastName = sheet.getRange('F' + lastRow).getValue();
-  var department = sheet.getRange('G' + lastRow).getValue();
-  var managerEmail = sheet.getRange('H' + lastRow).getValue();
-  var groups = sheet.getRange('I' + lastRow).getValue();
-  var personalEmail = sheet.getRange('J' + lastRow).getValue();
-
-  if (choice !== 'Create login') {
-    return;
+  if (!email) {
+    throw new Error('Company Email is required');
   }
 
-  var user = {
-    primaryEmail: email,
-    name: {
-      givenName: firstName,
-      familyName: lastName
-    },
-    changePasswordAtNextLogin: true,
-    organizations: [{
-      department: department
-    }],
-    password: generatePassword()
-  };
+  var errors = [];
 
-  AdminDirectory.Users.insert(user);
+  // Step 1: Create user (critical)
+  try {
+    AdminDirectory.Users.insert({
+      primaryEmail: email,
+      name: {
+        givenName: firstName,
+        familyName: lastName
+      },
+      changePasswordAtNextLogin: true,
+      organizations: [{
+        department: department
+      }],
+      password: generatePassword()
+    });
+    Logger.log('User created: ' + email);
+  } catch (e) {
+    throw new Error('Failed to create user: ' + e.toString());
+  }
 
+  // Step 2: Add to groups (non-critical)
   if (groups) {
-    addUserToGroups(email, groups);
+    var groupList = groups.split(',');
+    groupList.forEach(function (group) {
+      var trimmed = group.trim();
+      if (!trimmed) return;
+      try {
+        AdminDirectory.Members.insert({
+          email: email,
+          role: 'MEMBER'
+        }, trimmed);
+        Logger.log('Added ' + email + ' to group ' + trimmed);
+      } catch (e) {
+        var msg = 'Failed to add to group ' + trimmed + ': ' + e.toString();
+        Logger.log(msg);
+        errors.push(msg);
+      }
+    });
   }
 
-  if (managerEmail && date) {
-    createCalendarEvent(managerEmail, date);
-  }
-
+  // Step 3: Welcome email (non-critical)
   if (personalEmail) {
-    sendWelcomeEmail(firstName, personalEmail, date);
+    try {
+      var formattedDate = startDateStr;
+      var body = 'Dear ' + firstName + ',\n\n' +
+        'Documents and information required for employee admission.\n' +
+        'Your start date is: ' + formattedDate + '\n\n' +
+        'Welcome aboard!';
+
+      MailApp.sendEmail(personalEmail, 'Welcome to ' + config.companyName, body, {
+        name: 'HR Team',
+        replyTo: config.hrEmail
+      });
+      Logger.log('Welcome email sent to: ' + personalEmail);
+    } catch (e) {
+      var msg = 'Failed to send welcome email: ' + e.toString();
+      Logger.log(msg);
+      errors.push(msg);
+    }
+  }
+
+  // Step 4: Calendar event (non-critical)
+  if (managerEmail && startDateStr) {
+    try {
+      var startDate = new Date(startDateStr);
+      var event = {
+        summary: 'New employee starts today!',
+        location: config.companyName,
+        description: firstName + ' ' + lastName + ' starts today.',
+        start: { dateTime: relativeDate(9, startDate).toISOString() },
+        end: { dateTime: relativeDate(10, startDate).toISOString() },
+        reminders: {
+          useDefault: false,
+          overrides: [{ method: 'email', minutes: 1 }]
+        }
+      };
+      Calendar.Events.insert(event, managerEmail);
+      Logger.log('Calendar event created for: ' + managerEmail);
+    } catch (e) {
+      var msg = 'Failed to create calendar event: ' + e.toString();
+      Logger.log(msg);
+      errors.push(msg);
+    }
+  }
+
+  if (errors.length > 0) {
+    setStatus(sheet, row, 'PARTIAL - ' + errors.join(' | '), config);
   }
 }
 
 /**
- * Adds a user to one or more Google Groups.
- * @param {string} userEmail - The user's email address
- * @param {string} groupEmails - Comma-separated list of group email addresses
+ * Returns a Date set to a specific hour on the given date.
  */
-function addUserToGroups(userEmail, groupEmails) {
-  var groups = groupEmails.split(',');
-  groups.forEach(function (group) {
-    var trimmedGroup = group.trim();
-    if (trimmedGroup) {
-      AdminDirectory.Members.insert({
-        email: userEmail.trim(),
-        role: 'MEMBER'
-      }, trimmedGroup);
-    }
-  });
-}
-
-/**
- * Sends a welcome email to the employee's personal email address.
- * @param {string} firstName - Employee's first name
- * @param {string} personalEmail - Employee's personal email address
- * @param {Date} startDate - Employee's start date
- */
-function sendWelcomeEmail(firstName, personalEmail, startDate) {
-  var formattedDate = Utilities.formatDate(startDate, 'UTC', 'dd/MM/yyyy');
-  var subject = 'Welcome to our company';
-  var body = 'Dear ' + firstName + ',\n\n' +
-    'Documents and information required for employee admission.\n' +
-    'Your start date is: ' + formattedDate + '\n\n' +
-    'Welcome aboard!';
-
-  MailApp.sendEmail(personalEmail, subject, body, {
-    name: 'HR Team',
-    replyTo: 'hr@example.com',
-    from: 'hr@example.com'
-  });
-}
-
-/**
- * Creates a calendar event on the employee's start date.
- * @param {string} managerEmail - Manager's email (calendar owner)
- * @param {Date} startDate - Employee's start date
- */
-function createCalendarEvent(managerEmail, startDate) {
-  var event = {
-    summary: 'New employee starts today!',
-    location: 'Our Company',
-    description: '',
-    start: {
-      dateTime: getRelativeDate(9, startDate).toISOString()
-    },
-    end: {
-      dateTime: getRelativeDate(10, startDate).toISOString()
-    },
-    reminders: {
-      useDefault: false,
-      overrides: [{
-        method: 'email',
-        minutes: 1
-      }]
-    }
-  };
-
-  Calendar.Events.insert(event, managerEmail);
-}
-
-/**
- * Returns a Date object set to a specific hour on the given date.
- * @param {number} hour - Hour of the day (0-23)
- * @param {Date} date - The reference date
- * @returns {Date}
- */
-function getRelativeDate(hour, date) {
-  var result = new Date(date.getTime());
-  result.setHours(hour);
-  result.setMinutes(0);
-  result.setSeconds(0);
-  result.setMilliseconds(0);
-  return result;
-}
-
-/**
- * Generates a random temporary password.
- * @returns {string}
- */
-function generatePassword() {
-  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+function relativeDate(hour, date) {
+  var d = new Date(date.getTime());
+  d.setHours(hour);
+  d.setMinutes(0);
+  d.setSeconds(0);
+  d.setMilliseconds(0);
+  return d;
 }
