@@ -1,99 +1,145 @@
-// Inserts user in G Suite
-function addUser(){
+/**
+ * Triggered on Google Form submit when "Create login" is selected.
+ *
+ * 1. Creates a G Suite user account via Admin SDK Directory API
+ * 2. Adds the user to configured Google Groups
+ * 3. Sends a welcome email to the employee's personal address
+ * 4. Creates a calendar event on the employee's start date (optional)
+ */
+
+function addUser() {
   var ss = SpreadsheetApp.openById('spreadsheetId');
   var sheet = ss.getSheets()[0];
   var lastRow = ss.getLastRow();
-  var choice = ss.getRange('B'+lastRow).getValue();
-  var email =  ss.getRange('D'+lastRow).getValue();
-  var firstname = ss.getRange('E'+lastRow).getValue();
-  var lastname = ss.getRange('F'+lastRow).getValue();
-  var personalMail = ss.getRange('J'+lastRow).getValue();
-  var departament = ss.getRange('G'+lastRow).getValue();
-  var date = Utilities.formatDate(sheet.getRange("C"+lastRow).getValue(), "UTC", "dd/MM/yyyy" );ss.getRange('Q'+lastRow).getValue();
-  var feedbackDate = sheet.getRange("C"+lastRow).getValue();
 
-  if (choice != 'Create login') {
-    return false;
+  var choice = sheet.getRange('B' + lastRow).getValue();
+  var date = sheet.getRange('C' + lastRow).getValue();
+  var email = sheet.getRange('D' + lastRow).getValue();
+  var firstName = sheet.getRange('E' + lastRow).getValue();
+  var lastName = sheet.getRange('F' + lastRow).getValue();
+  var department = sheet.getRange('G' + lastRow).getValue();
+  var managerEmail = sheet.getRange('H' + lastRow).getValue();
+  var groups = sheet.getRange('I' + lastRow).getValue();
+  var personalEmail = sheet.getRange('J' + lastRow).getValue();
+
+  if (choice !== 'Create login') {
+    return;
   }
-  {
+
   var user = {
     primaryEmail: email,
     name: {
-      givenName : firstname,
-      familyName: lastname,
+      givenName: firstName,
+      familyName: lastName
     },
     changePasswordAtNextLogin: true,
-    departament: departament,
-    password: Math.random().toString(36)
+    organizations: [{
+      department: department
+    }],
+    password: generatePassword()
   };
 
-  user = AdminDirectory.Users.insert(user);
-}
+  AdminDirectory.Users.insert(user);
 
-// Inserts the user in Google Groups
-function ensureEmailOnGroup(email,groupEmail){
-  var group = groupEmail.trim();
-  var email = email.trim();
-  var member = {
-    'email': email,
-    'role': 'MEMBER'
+  if (groups) {
+    addUserToGroups(email, groups);
   }
-  email:group
-  member = AdminDirectory.Members.insert(member, groupEmail.trim());
+
+  if (managerEmail && date) {
+    createCalendarEvent(managerEmail, date);
+  }
+
+  if (personalEmail) {
+    sendWelcomeEmail(firstName, personalEmail, date);
+  }
 }
 
-function addGroupMember(UserEmail,groupEmail){
-  var groupTrim = groupEmail.trim();
-  var groupsToInsert = groupEmail.split(',');
-  groupsToInsert.forEach(function(groupEmail) {
-    ensureEmailOnGroup(UserEmail,groupEmail);
+/**
+ * Adds a user to one or more Google Groups.
+ * @param {string} userEmail - The user's email address
+ * @param {string} groupEmails - Comma-separated list of group email addresses
+ */
+function addUserToGroups(userEmail, groupEmails) {
+  var groups = groupEmails.split(',');
+  groups.forEach(function (group) {
+    var trimmedGroup = group.trim();
+    if (trimmedGroup) {
+      AdminDirectory.Members.insert({
+        email: userEmail.trim(),
+        role: 'MEMBER'
+      }, trimmedGroup);
+    }
   });
-};
+}
 
-// Sends the first contact on employee personal mail
-function notifyMember(site,personalMail,firstname,lastname,date){
-  var body = "Documents and information required for employee admission.";
-  var subject = "Welcome to our company";
-  var options = {name:"HR Team",htmlBody:body,replyTo:"hr@example.com",from:"hr@example.com"};
-    MailApp.sendEmail(personalMail,subject,body,options);
-  };
+/**
+ * Sends a welcome email to the employee's personal email address.
+ * @param {string} firstName - Employee's first name
+ * @param {string} personalEmail - Employee's personal email address
+ * @param {Date} startDate - Employee's start date
+ */
+function sendWelcomeEmail(firstName, personalEmail, startDate) {
+  var formattedDate = Utilities.formatDate(startDate, 'UTC', 'dd/MM/yyyy');
+  var subject = 'Welcome to our company';
+  var body = 'Dear ' + firstName + ',\n\n' +
+    'Documents and information required for employee admission.\n' +
+    'Your start date is: ' + formattedDate + '\n\n' +
+    'Welcome aboard!';
 
-// Creates an event in manager's calendar
-function createEvent (managerMail,feedbackDate) {
-  var calendarId = managerMail;
-  var date = new Date(feedbackDate.getTime());
-  var start = getRelativeDate(9);
-  var end = getRelativeDate(10);
+  MailApp.sendEmail(personalEmail, subject, body, {
+    name: 'HR Team',
+    replyTo: 'hr@example.com',
+    from: 'hr@example.com'
+  });
+}
+
+/**
+ * Creates a calendar event on the employee's start date.
+ * @param {string} managerEmail - Manager's email (calendar owner)
+ * @param {Date} startDate - Employee's start date
+ */
+function createCalendarEvent(managerEmail, startDate) {
   var event = {
     summary: 'New employee starts today!',
     location: 'Our Company',
-    description: "" ,
+    description: '',
     start: {
-      dateTime: start.toISOString()
+      dateTime: getRelativeDate(9, startDate).toISOString()
     },
     end: {
-      dateTime: end.toISOString()
-      },
-    };
-    reminders:{
-      useDefault: false
-    overrides: [
-    {
-    method: 'email',
-      minutes: 1
+      dateTime: getRelativeDate(10, startDate).toISOString()
+    },
+    reminders: {
+      useDefault: false,
+      overrides: [{
+        method: 'email',
+        minutes: 1
+      }]
     }
-    ]
-  };
-  event = Calendar.Events.insert(event, calendarId);
   };
 
-function getRelativeDate(hour,daysOffset,feedbackDate) {
-  var date = new Date(feedbackDate.getTime());
-  date.setDate(date.getDate());
-  date.setHours(hour);
-  date.setMinutes(0);
-  date.setSeconds(0);
-  date.setMilliseconds(0);
-  return date;
-  };
+  Calendar.Events.insert(event, managerEmail);
+}
+
+/**
+ * Returns a Date object set to a specific hour on the given date.
+ * @param {number} hour - Hour of the day (0-23)
+ * @param {Date} date - The reference date
+ * @returns {Date}
+ */
+function getRelativeDate(hour, date) {
+  var result = new Date(date.getTime());
+  result.setHours(hour);
+  result.setMinutes(0);
+  result.setSeconds(0);
+  result.setMilliseconds(0);
+  return result;
+}
+
+/**
+ * Generates a random temporary password.
+ * @returns {string}
+ */
+function generatePassword() {
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 }

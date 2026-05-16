@@ -1,0 +1,28 @@
+---
+name: Feature Request
+about: Suggest a new feature or enhancement
+title: "feat: "
+labels: enhancement
+assignees: ""
+---
+
+## Problem / Opportunity
+
+<!-- What problem does this solve? -->
+
+## Proposed Solution
+
+<!-- What would you like to see? -->
+
+## Scope
+
+- Which script(s) would be affected? (addUser, suspendUser, new script)
+- Does this require changes to the Google Form or spreadsheet structure?
+
+## Alternatives Considered
+
+<!-- Any other approaches you've considered? -->
+
+## Additional Context
+
+<!-- References, examples, or related issues -->
